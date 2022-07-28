@@ -1,3 +1,5 @@
+# Based on https://github.com/cdrx/docker-pyinstaller/blob/master/Dockerfile-py3-win64
+
 FROM debian:bullseye-slim
 ENV DEBIAN_FRONTEND noninteractive
 
@@ -10,13 +12,18 @@ RUN apt-get update && apt-get install --no-install-recommends -y wine \
       libwine:i386 \
       fonts-wine \
       wget \
-      python3-tk
+      python3-tk \
+      apt-transport-https \
+      software-properties-common \
+      ca-certificates \
+      procps \
+      cabextract
 
-RUN wget https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks /usr/local/bin/winetricks
-RUN chmod +x /usr/local/bin/winetricks
+RUN wget -nv https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks
+RUN chmod +x winetricks && mv winetricks /usr/local/bin
 
 # Wine settings
-ENV WINEARCH wine64
+ENV WINEARCH win64
 ENV WINDEBUG fixme-all
 ENV WINEPREFIX /wine
 
@@ -26,30 +33,34 @@ ENV PYPI_URL=https://pypi.python.org/
 ENV PYPI_INDEX_URL=https://pypi.python.org/simple
 
 # Set up Python in Wine
-RUN set -xe \
+RUN set -x \
     && winetricks win10 \
-    && for msi_file in echo core dev exe lib path pip tcltk tools; do \
+    && for msi_file in core dev exe lib path pip tcltk tools; do \
         wget -nv "https://www.python.org/ftp/python/3.9.13/amd64/${msi_file}.msi"; \
         wine msiexec /i "${msi_file}.msi" /qb TARGETDIR=C:/Python39; \
         rm ${msi_file}.msi; \
-    done \
-    && cd /wine/drive_c/Python39 \
+    done 
+    
+RUN cd /wine/drive_c/Python39 \
     && echo 'wine '\''C:\Python39\python.exe'\'' "$@"' > /usr/bin/python \
     && echo 'wine '\''C:\Python39\Scripts\easy_install.exe'\'' "$@"' > /usr/bin/easy_install \
     && echo 'wine '\''C:\Python39\Scripts\pip.exe'\'' "$@"' > /usr/bin/pip \
     && echo 'wine '\''C:\Python39\Scripts\pyinstaller.exe'\'' "$@"' > /usr/bin/pyinstaller \
     && echo 'wine '\''C:\Python39\Scripts\pyupdater.exe'\'' "$@"' > /usr/bin/pyupdater \
     && echo 'assoc .py=PythonScript' | wine cmd \
-    && echo 'ftype PythonScript=c:\Python39\python.exe "%1" %*' | wine cmd \
-    && while pgrep wineserver >/dev/null; do echo "Waiting for wineserver"; sleep 1; done \
+    && echo 'ftype PythonScript=c:\Python39\python.exe "%1" %*' | wine cmd 
+
+RUN while pgrep wineserver >/dev/null; do echo "Waiting for wineserver"; sleep 1; done \
     && chmod +x /usr/bin/python /usr/bin/easy_install /usr/bin/pip /usr/bin/pyinstaller /usr/bin/pyupdater \
-    && (pip install -U pip || true) \
+    && pip install --user -U pip  \
     && rm -rf /tmp/.wine-*
 
 ENV W_DRIVE_C=/wine/drive_c
 ENV W_WINDIR_UNIX="$W_DRIVE_C/windows"
 ENV W_SYSTEM64_DLLS="$W_WINDIR_UNIX/system32"
 ENV W_TMP="$W_DRIVE_C/windows/temp/_$0"
+
+RUN apt-get update && apt-get install -y rename
 
 # install Microsoft Visual C++ Redistributable for Visual Studio 2017 dll files
 RUN set -x \
@@ -62,7 +73,7 @@ RUN set -x \
     && rename 's/_/\-/g' *.dll \
     && cp "$W_TMP"/*.dll "$W_SYSTEM64_DLLS"/
 
-RUN /usr/bin/pip install pyinstaller
+RUN pip install pyinstaller
 
 # put the src folder inside wine
 RUN mkdir /src/ && ln -s /src /wine/drive_c/src
