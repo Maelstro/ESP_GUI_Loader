@@ -1,0 +1,2 @@
+esptool == 4.1
+pyserial == 3.5
